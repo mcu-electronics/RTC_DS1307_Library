@@ -1,0 +1,39 @@
+#######################################
+# Syntax Coloring Map For RTC_DS1307_Library
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+get	KEYWORD2
+set	KEYWORD2
+read	KEYWORD2
+write	KEYWORD2
+chipPresent	KEYWORD2
+isRunning	KEYWORD2
+setClockOut	KEYWORD2
+getClockOut	KEYWORD2
+readRegister	KEYWORD2
+writeRegister	KEYWORD2
+dec2bcd	KEYWORD2
+bcd2dec	KEYWORD2
+
+#######################################
+# Instances (KEYWORD2)
+#######################################
+RTC	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+present	LITERAL1
+running	LITERAL1
+mode12_24	LITERAL1
+am_pm	LITERAL1
+clockout_en	LITERAL1
+default_out_state	LITERAL1
+clockout_divider	LITERAL1
