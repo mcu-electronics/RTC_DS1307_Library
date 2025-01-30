@@ -34,7 +34,12 @@
 class DS1307Clock {
   public:
     // Constructor of the DS1307Clock class.
-    DS1307Clock();
+    DS1307Clock();	
+	
+    // Initializes the RTC and sets TimeLib synchronization.
+    // Calls setSyncProvider() to use the RTC as the time provider,
+    // ensuring that TimeLib updates its internal time from the RTC.
+    void begin();
 
     // Retrieves the current time from the RTC as a Unix timestamp.
     // Returns the current time in seconds since 1970.
@@ -59,6 +64,9 @@ class DS1307Clock {
     // Checks if the RTC is running.
     // Returns 1 if the RTC is running, 0 if not.
     static unsigned char isRunning();
+	
+	static bool readHourFormat();
+	static bool writeHourFormat();
 
     // Configures the DS1307 control register based on internal variables.
     static void configureClockOut();
@@ -69,8 +77,8 @@ class DS1307Clock {
     // State and mode variables.
     static bool present;             // Indicates if the RTC chip is present on the I2C bus.
     static bool running;             // Indicates if the clock is running.
-    static bool mode12_24;           // Hour mode: true = 12-hour, false = 24-hour.
-    static bool am_pm;               // Indicates AM or PM if in 12-hour mode.
+    static bool is12HourFormat;      // true => 12-hour format, false => 24-hour format
+    static bool isPMFlag;            // true => PM, false => AM (only valid if is12HourMode==true) 
     // Control register variables.
     static bool clockout_en;         // Indicates if the clock output is enabled.
     static bool default_out_state;   // Default state of the SQW/OUT pin.
@@ -84,10 +92,6 @@ class DS1307Clock {
     static void writeReg(uint8_t regAddress, uint8_t value);
 
   private:
-    // Private function to decode the hour register, 12/24-hour flags, and AM/PM.
-    static uint8_t DS1307Clock::decodeHourRegister(uint8_t hourReg);
-    // Private function to encode the hour register with 12/24-hour flags and AM/PM.
-    static uint8_t DS1307Clock::encodeHourRegister(uint8_t hour);
     // Converts a decimal number to BCD format.
     static uint8_t dToBcd(uint8_t num);
     // Converts a BCD number to decimal format.

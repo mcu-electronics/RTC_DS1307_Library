@@ -64,15 +64,15 @@ void setup() {
   Serial.begin(9600);
   while (!Serial);   // Wait for serial port to be ready (needed on boards like Leonardo)
 
-  // A3 is used as input to read the SQW/OUT pin of the DS1307 (clock out signal).
-  pinMode(A3, INPUT);  
-  // LED_BUILTIN is used here as an indicator for the clock out signal.
-  // The loop() function will read A3 and mirror its state onto the LED.
+  // Set A3 pin as input for SQWOUT pin
+  pinMode(A3, INPUT);
+  // Set LED_BUILTIN as output
   pinMode(LED_BUILTIN, OUTPUT);
 
-  // Optional: set up TimeLib's synchronization with DS1307
-  // (Not strictly required for RAM operations, but included for consistency)
-  setSyncProvider(RTC.get);
+  RTC.begin();
+  if (timeStatus() != timeSet) {
+      Serial.println("Unable to sync with the RTC");
+  }
 }
 
 // ---------------------- loop() ----------------------

@@ -9,6 +9,7 @@
  * - SET_UNIX:  Command to set the RTC time using a Unix timestamp.
  * - GET_TIME:  Command to retrieve the current RTC time in human-readable format.
  * - GET_UNIX:  Command to retrieve the current RTC time as a Unix timestamp.
+ * - SET_FORMAT: Command to switch between 12-hour and 24-hour formats.
  * - CHECK_RTC: Command to verify if the DS1307 chip is present on the I2C bus.
  *
  * Notes:
@@ -52,7 +53,9 @@ void processSetTime(String params);
 void processSetTimeUnix(String params);
 void sendCurrentTime(String params = "");
 void sendUnixTimestamp(String params);
+void processSetHourFormat(String params); 
 void processCheckRTC(String params);
+
 
 // ---------------------- Command table ----------------------
 // Includes only time-related commands plus CHECK_RTC
@@ -61,6 +64,7 @@ Command commandTable[] = {
   {"SET_UNIX",  processSetTimeUnix},
   {"GET_TIME",  sendCurrentTime},
   {"GET_UNIX",  sendUnixTimestamp},
+  {"SET_FORMAT",  processSetHourFormat},
   {"CHECK_RTC", processCheckRTC}
 };
 
@@ -71,13 +75,15 @@ void setup() {
   Serial.begin(9600);
   while (!Serial);   // Wait for serial port to be ready (needed on boards like Leonardo)
 
-  // Set A3 pin as input
+  // Set A3 pin as input for SQWOUT pin
   pinMode(A3, INPUT);
   // Set LED_BUILTIN as output
   pinMode(LED_BUILTIN, OUTPUT);
 
-  // Set up TimeLib's synchronization function to use the RTC
-  setSyncProvider(RTC.get);
+  RTC.begin();
+  if (timeStatus() != timeSet) {
+      Serial.println("Unable to sync with the RTC");
+  }
 }
 
 // ---------------------- loop() ----------------------
@@ -131,12 +137,9 @@ void processSetTime(String timeString) {
   // Parse the incoming string
   if (sscanf(timeString.c_str(), "%d/%d/%d %d:%d:%d",
              &year, &month, &day, &hour, &minute, &second) == 6) {
-    // Set local time on Arduino
-    setTime(hour, minute, second, day, month, year);
-    // Update RTC time
-    RTC.set(now());
-    // Print the newly set time
-    sendCurrentTime();
+    setTime(hour, minute, second, day, month, year);    // Set local time on Arduino
+    RTC.set(now()); // Set the RTC with the entered time
+    sendCurrentTime();    // Print the newly set time
   } else {
     Serial.println("Invalid time format");
   }
@@ -146,34 +149,55 @@ void processSetTime(String timeString) {
  * SET_UNIX - Sets time based on a Unix timestamp
  */
 void processSetTimeUnix(String unixString) {
-  unsigned long unixTime = unixString.toInt();
+  unsigned long unixTime = unixString.toInt(); // Convert the string to a long integer
   if (unixTime > 0) {
-    // Set local time on Arduino
-    setTime(unixTime);
-    // Update RTC
-    RTC.set(now());
-    // Print the newly set Unix timestamp
-    sendUnixTimestamp("");
+    setTime(unixTime); // Set the system time
+    RTC.set(now());    // Set the RTC with the entered time
+    sendUnixTimestamp(""); // Display the configured timestamp
   } else {
-    Serial.println("Invalid Unix timestamp");
+    Serial.println("Invalid Unix timestamp"); // Invalid timestamp
   }
+}
+
+
+void printDigits(int digits) {
+    Serial.print(":");
+    if (digits < 10) Serial.print('0');
+    Serial.print(digits);
 }
 
 /**
  * GET_TIME - Prints the current time in "YYYY/MM/DD HH:MM:SS"
  */
 void sendCurrentTime(String params) {
-  Serial.print(year());
-  Serial.print("/");
-  Serial.print(month());
-  Serial.print("/");
-  Serial.print(day());
-  Serial.print(" ");
-  Serial.print(hour());
-  printDigits(minute());
-  printDigits(second());
-  Serial.println();
+    RTC.readHourFormat(); // Update format configuration
+
+    Serial.print(year());
+    Serial.print("/");
+    Serial.print(month());
+    Serial.print("/");
+    Serial.print(day());
+    Serial.print(" ");
+
+    int h = hour(); // Get the hour in 24h format
+
+    if (RTC.is12HourFormat) {
+        RTC.isPMFlag = isPM(h); // Determine if it's AM or PM
+        int hour12 = (h == 0) ? 12 : (h > 12 ? h - 12 : h); // Convert 0->12 AM, 13->1 PM, etc.
+
+        Serial.print(hour12);
+        printDigits(minute());
+        printDigits(second());
+        Serial.println(RTC.isPMFlag ? " PM" : " AM");
+    } else {
+        Serial.print(h);
+        printDigits(minute());
+        printDigits(second());
+        Serial.println();
+    }
 }
+
+
 
 /**
  * GET_UNIX - Prints the current time as a Unix timestamp
@@ -187,6 +211,23 @@ void sendUnixTimestamp(String params) {
   }
 }
 
+
+/**
+ * SET_FORMAT - Set hour format (12/24)
+ * Usage: "SET_FORMAT 12" or "SET_FORMAT 24"
+ */
+void processSetHourFormat(String params) {
+    if (params.equals("12") || params.equals("24")) {
+        RTC.readHourFormat();
+        RTC.is12HourFormat = params.equals("12");
+        RTC.writeHourFormat();
+        sendCurrentTime();    // Print the newly set time
+    } else {
+        Serial.println("ERROR");
+    }
+}
+
+
 /**
  * CHECK_RTC - Checks if the DS1307 is present
  */
@@ -198,15 +239,5 @@ void processCheckRTC(String params) {
   }
 }
 
-/**
- * Helper function for printing time with zero-padding
- * For example: "12:09:07"
- */
-void printDigits(int digits) {
-  Serial.print(":");
-  if (digits < 10) {
-    Serial.print('0');
-  }
-  Serial.print(digits);
-}
+
 

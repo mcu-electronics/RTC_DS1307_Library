@@ -64,13 +64,15 @@ void setup() {
   Serial.begin(9600);
   while (!Serial);   // Wait for serial port to be ready (needed on boards like Leonardo)
 
-  // Set A3 pin as input
+  // Set A3 pin as input for SQWOUT pin
   pinMode(A3, INPUT);
   // Set LED_BUILTIN as output
   pinMode(LED_BUILTIN, OUTPUT);
 
-  // Optionally synchronize with RTC; here we mostly focus on clock out usage.
-  setSyncProvider(RTC.get);
+  RTC.begin();
+  if (timeStatus() != timeSet) {
+      Serial.println("Unable to sync with the RTC");
+  }
 }
 
 // ---------------------- loop() ----------------------

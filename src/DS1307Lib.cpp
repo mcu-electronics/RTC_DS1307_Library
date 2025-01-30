@@ -35,6 +35,11 @@ DS1307Clock::DS1307Clock() {
 
 // Public functions
 
+void DS1307Clock::begin() {   // Initializes the RTC and sets TimeLib synchronization.
+    setSyncProvider(RTC.get); // Calls setSyncProvider() to use the RTC as the time provider,
+    //setSyncInterval(3600);  // Sincroniza cada hora (3600 segundos)
+}
+
 time_t DS1307Clock::get() {
     tmElements_t tm;
     if (!readTime(tm)) return 0;
@@ -65,8 +70,7 @@ bool DS1307Clock::readTime(tmElements_t &tm) {
     sec = Wire.read();
     tm.Second = bcdToD(sec & 0x7F);
     tm.Minute = bcdToD(Wire.read());
-    uint8_t hourReg = Wire.read();
-    tm.Hour = decodeHourRegister(hourReg); // Decoding hour register, 12/24-hour flags, and AM/PM
+    tm.Hour = bcdToD(Wire.read() & 0x3f);//Mask = 00111111 24h Format
     tm.Wday = bcdToD(Wire.read());
     tm.Day = bcdToD(Wire.read());
     tm.Month = bcdToD(Wire.read());
@@ -84,12 +88,12 @@ bool DS1307Clock::writeTime(tmElements_t &tm) {
     Wire.write((uint8_t)0x80); // Activate CH bit to stop the clock
 
     // Convert and write main registers in BCD format
-    Wire.write(dToBcd(tm.Minute));
-    Wire.write(encodeHourRegister(tm.Hour)); // Use encodeHourRegister to write the hour register
+    Wire.write(dToBcd(tm.Minute));// Minutes
+    Wire.write(dToBcd(tm.Hour));  // Hours
     Wire.write(dToBcd(tm.Wday));  // Day of the week
     Wire.write(dToBcd(tm.Day));   // Day of the month
     Wire.write(dToBcd(tm.Month)); // Month
-    Wire.write(tmYearToY2k(tm.Year)); // Year
+    Wire.write(dToBcd(tmYearToY2k(tm.Year))); // Year
 
     // Check if the transmission failed
     if (Wire.endTransmission() != 0) {
@@ -115,6 +119,45 @@ unsigned char DS1307Clock::isRunning() {
     uint8_t secondsRegister = readReg(0x00);
     return !(secondsRegister & 0x80);
 }
+
+
+bool DS1307Clock::readHourFormat() {
+    uint8_t hourReg = readReg(0x02); // Leer el registro de hora del DS1307
+
+    // Verificar si está en formato de 12 horas
+    is12HourFormat = (hourReg & 0x40) != 0;
+
+    if (is12HourFormat) {
+        uint8_t hour24 = bcdToD(hourReg & 0x3F); // Extraer hora en formato 24h
+        isPMFlag = isPM(hour24); // Ahora no hay conflicto con TimeLib
+    } else {
+        isPMFlag = false; // En formato 24h, no existe AM/PM
+    }
+    return true;
+}
+
+
+bool DS1307Clock::writeHourFormat() {
+    uint8_t hourReg = readReg(0x02); // Leer el registro de hora
+
+    uint8_t hour24 = bcdToD(hourReg & 0x3F); // Convertir BCD a decimal (24h)
+    uint8_t newReg = 0;
+
+    if (is12HourFormat) {
+        uint8_t hour12 = hourFormat12(hour24); // Convertir a formato 12h
+        isPMFlag = isPM(hour24); // Ahora no hay conflicto con TimeLib
+
+        newReg = 0x40; // Bit 6 en 1 = formato 12h
+        if (isPMFlag) newReg |= 0x20; // Bit 5 en 1 = PM
+        newReg |= dToBcd(hour12) & 0x1F; // Convertir a BCD (1-12)
+    } else {
+        newReg = dToBcd(hour24) & 0x3F; // Mantener formato 24h
+    }
+
+    writeReg(0x02, newReg); // Escribir la nueva configuración
+    return true;
+}
+
 
 void DS1307Clock::configureClockOut() {
     uint8_t reg = 0;
@@ -156,64 +199,11 @@ uint8_t DS1307Clock::bcdToD(uint8_t num) {
     return ((num >> 4) * 10) + (num & 0x0F); // Tens from the upper 4 bits, units from the lower 4 bits
 }
 
-// Private function to decode the hour register, 12/24-hour flags, and AM/PM
-uint8_t DS1307Clock::decodeHourRegister(uint8_t hourReg) {
-    uint8_t hour;
-
-    // Determine 12/24-hour format and set mode12_24
-    if (hourReg & 0x40) { // 12-hour format (bit 6 is active)
-        mode12_24 = true; // It is 12-hour format
-
-        // Extract bits 4-0 (hour in 12-hour format)
-        hour = bcdToD(hourReg & 0x1F);
-
-        // Check AM/PM indicator (bit 5)
-        if (hourReg & 0x20) {
-            am_pm = true; // PM
-            hour += 12;   // Convert to 24-hour format
-        } else {
-            am_pm = false; // AM
-        }
-
-        // Adjust midnight
-        if (hour == 24) hour = 0;
-
-    } else { // 24-hour format
-        mode12_24 = false; // It is 24-hour format
-        am_pm = false;     // AM/PM not applicable in 24-hour format
-
-        // Extract bits 5-0 (hour in 24-hour format)
-        hour = bcdToD(hourReg & 0x3F);
-    }
-
-    return hour;
-}
-
-// Private function to encode the hour register with 12/24-hour flags and AM/PM
-uint8_t DS1307Clock::encodeHourRegister(uint8_t hour) {
-    uint8_t hourReg;
-
-    if (mode12_24) { // 12-hour format
-        hourReg = dToBcd(hour % 12); // Convert to 12-hour format (0-11)
-        if (hour == 0 || hour == 12) {
-            hourReg = dToBcd(12); // Adjust midnight or noon
-        }
-        hourReg |= 0x40; // Activate bit 6 for 12-hour format
-        if (am_pm) {
-            hourReg |= 0x20; // Activate bit 5 for PM
-        }
-    } else { // 24-hour format
-        hourReg = dToBcd(hour); // Convert to 24-hour format (0-23)
-    }
-
-    return hourReg;
-}
-
 // Static variable initialization
 bool DS1307Clock::present = false;
 bool DS1307Clock::running = false;
-bool DS1307Clock::mode12_24 = false;
-bool DS1307Clock::am_pm = false;
+bool DS1307Clock::is12HourFormat = false;
+bool DS1307Clock::isPMFlag = false;
 bool DS1307Clock::clockout_en = false;
 bool DS1307Clock::default_out_state = false;
 uint8_t DS1307Clock::clockout_divider = 0;

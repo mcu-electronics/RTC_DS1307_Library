@@ -15,6 +15,7 @@
  * - SET_UNIX: Set the RTC time using a Unix timestamp.
  * - GET_TIME: Retrieve the current time in human-readable format.
  * - GET_UNIX: Retrieve the current time as a Unix timestamp.
+ * - SET_FORMAT: Command to switch between 12-hour and 24-hour formats.
  * - SET_CLOCKOUT: Configure the clock output pin with various settings.
  * - READ_RAM: Read a block of bytes from the DS1307's battery-backed RAM.
  * - WRITE_RAM: Write a block of bytes to the DS1307's battery-backed RAM.
@@ -59,6 +60,7 @@ void processSetTime(String params);
 void processSetTimeUnix(String params);
 void sendUnixTimestamp(String params);
 void sendCurrentTime(String params = "");
+void processSetHourFormat(String params); 
 void processSetClockOut(String params);
 void processCheckRTC(String params);
 void processReadRAM(String params);
@@ -70,6 +72,7 @@ Command commandTable[] = {
   {"SET_UNIX", processSetTimeUnix},
   {"GET_UNIX", sendUnixTimestamp},
   {"GET_TIME", sendCurrentTime},
+  {"SET_FORMAT",  processSetHourFormat},
   {"SET_CLOCKOUT", processSetClockOut},
   {"CHECK_RTC", processCheckRTC},
   {"READ_RAM", processReadRAM},
@@ -82,17 +85,14 @@ const int commandCount = sizeof(commandTable) / sizeof(Command); // Number of co
 void setup() {
   Serial.begin(9600); // Set up serial communication at 9600 baud
   while (!Serial);    // Wait for the serial port to be ready (necessary for boards like Leonardo)
-  // Set pin A3 as input
+  // Set A3 pin as input for SQWOUT pin
   pinMode(A3, INPUT);
-  // Set the built-in LED pin as output
+  // Set LED_BUILTIN as output
   pinMode(LED_BUILTIN, OUTPUT);
 
-  // Set up the synchronization function
-  setSyncProvider(RTC.get);
+  RTC.begin();
   if (timeStatus() != timeSet) {
       Serial.println("Unable to sync with the RTC");
-  } else {
-      Serial.println("RTC has been synchronized");
   }
 }
 
@@ -138,7 +138,9 @@ void loop() {
 
 // Auxiliary function implementations
 
-// Processes the SET_TIME command (human-readable format)
+/**
+ * SET_TIME - Sets time in human-readable format: "YYYY/MM/DD HH:MM:SS"
+ */
 void processSetTime(String timeString) {
   int year, month, day, hour, minute, second;
   if (sscanf(timeString.c_str(), "%d/%d/%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second) == 6) {
@@ -150,7 +152,9 @@ void processSetTime(String timeString) {
   }
 }
 
-// Processes the SET_TIMEU command (Unix timestamp)
+/**
+ * SET_UNIX - Sets time based on a Unix timestamp
+ */
 void processSetTimeUnix(String unixString) {
   unsigned long unixTime = unixString.toInt(); // Convert the string to a long integer
   if (unixTime > 0) {
@@ -205,19 +209,38 @@ void processCheckRTC(String params) {
   }
 }
 
-// Sends the current time in a human-readable format
+/**
+ * GET_TIME - Prints the current time in "YYYY/MM/DD HH:MM:SS"
+ */
 void sendCurrentTime(String params) {
-  Serial.print(year());
-  Serial.print("/");
-  Serial.print(month());
-  Serial.print("/");
-  Serial.print(day());
-  Serial.print(" ");
-  Serial.print(hour());
-  printDigits(minute());
-  printDigits(second());
-  Serial.println();
+    RTC.readHourFormat(); // Update format configuration
+
+    Serial.print(year());
+    Serial.print("/");
+    Serial.print(month());
+    Serial.print("/");
+    Serial.print(day());
+    Serial.print(" ");
+
+    int h = hour(); // Get the hour in 24h format
+
+    if (RTC.is12HourFormat) {
+        RTC.isPMFlag = isPM(h); // Determine if it's AM or PM
+        int hour12 = (h == 0) ? 12 : (h > 12 ? h - 12 : h); // Convert 0->12 AM, 13->1 PM, etc.
+
+        Serial.print(hour12);
+        printDigits(minute());
+        printDigits(second());
+        Serial.println(RTC.isPMFlag ? " PM" : " AM");
+    } else {
+        Serial.print(h);
+        printDigits(minute());
+        printDigits(second());
+        Serial.println();
+    }
 }
+
+
 
 // Sends the current time as a Unix timestamp
 void sendUnixTimestamp(String params) {
@@ -235,6 +258,23 @@ void printDigits(int digits) {
   if (digits < 10)
     Serial.print('0'); // Add a leading zero if less than 10
   Serial.print(digits); // Print the number
+}
+
+
+
+/**
+ * SET_FORMAT - Set hour format (12/24)
+ * Usage: "SET_FORMAT 12" or "SET_FORMAT 24"
+ */
+void processSetHourFormat(String params) {
+    if (params.equals("12") || params.equals("24")) {
+        RTC.readHourFormat();
+        RTC.is12HourFormat = params.equals("12");
+        RTC.writeHourFormat();
+        sendCurrentTime();    // Print the newly set time
+    } else {
+        Serial.println("ERROR");
+    }
 }
 
 /*
